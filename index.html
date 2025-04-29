@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cloudy Skies</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #87CEEB;
+            touch-action: manipulation;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            display: block;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F7FA 100%);
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+        #score {
+            font-size: 24px;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+        }
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        #startButton {
+            padding: 15px 30px;
+            font-size: 20px;
+            background: #FF9800;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui">
+        <div id="score">0</div>
+    </div>
+    <div id="startScreen">
+        <h1>Cloudy Skies</h1>
+        <p>Fly your paper plane through the clouds!</p>
+        <p>Tap/click to go up, avoid storm clouds</p>
+        <button id="startButton">Start Flying</button>
+    </div>
+
+    <script>
+        // Game constants
+        const GAME_WIDTH = 800;
+        const GAME_HEIGHT = 600;
+        const PLANE_SIZE = 30;
+        const CLOUD_COLORS = ['#F5F5F5', '#E0E0E0', '#EEEEEE'];
+        const STORM_COLORS = ['#616161', '#424242', '#212121'];
+        
+        // Game variables
+        let canvas, ctx;
+        let gameRunning = false;
+        let score = 0;
+        let highScore = 0;
+        let gameSpeed = 3;
+        let frameCount = 0;
+        
+        // Player object
+        const player = {
+            x: 100,
+            y: GAME_HEIGHT / 2,
+            width: PLANE_SIZE,
+            height: PLANE_SIZE * 0.6,
+            speedY: 0,
+            gravity: 0.2,
+            lift: -5,
+            rotation: 0
+        };
+        
+        // Game objects
+        let clouds = [];
+        let stormClouds = [];
+        let sunbeams = [];
+        let particles = [];
+        
+        // Initialize game
+        function init() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Set canvas size
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            // Event listeners
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+            canvas.addEventListener('mousedown', handleTouchStart);
+            canvas.addEventListener('mouseup', handleTouchEnd);
+            canvas.addEventListener('touchstart', handleTouchStart);
+            canvas.addEventListener('touchend', handleTouchEnd);
+            
+            document.getElementById('startButton').addEventListener('click', startGame);
+            
+            // Start game loop
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Resize canvas to fit window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        // Start game
+        function startGame() {
+            document.getElementById('startScreen').style.display = 'none';
+            gameRunning = true;
+            score = 0;
+            gameSpeed = 3;
+            player.y = GAME_HEIGHT / 2;
+            player.speedY = 0;
+            clouds = [];
+            stormClouds = [];
+            sunbeams = [];
+            particles = [];
+        }
+        
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('startScreen').style.display = 'flex';
+            document.querySelector('#startScreen p:last-child').textContent = `Score: ${score} | High Score: ${Math.max(score, highScore)}`;
+            highScore = Math.max(score, highScore);
+        }
+        
+        // Input handling
+        let isTouching = false;
+        
+        function handleKeyDown(e) {
+            if (e.code === 'Space' || e.key === 'ArrowUp') {
+                player.speedY = player.lift;
+            }
+        }
+        
+        function handleKeyUp(e) {
+            if (e.code === 'Space' || e.key === 'ArrowUp') {
+                // Don't immediately stop, let gravity handle it
+            }
+        }
+        
+        function handleTouchStart(e) {
+            e.preventDefault();
+            isTouching = true;
+            player.speedY = player.lift;
+        }
+        
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            isTouching = false;
+        }
+        
+        // Game loop
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Update game state
+        function update() {
+            if (!gameRunning) return;
+            
+            frameCount++;
+            
+            // Update player
+            player.speedY += player.gravity;
+            player.y += player.speedY;
+            player.rotation = player.speedY * 0.1;
+            
+            // Keep player in bounds
+            if (player.y < 0) player.y = 0;
+            if (player.y > GAME_HEIGHT - player.height) {
+                player.y = GAME_HEIGHT - player.height;
+                player.speedY = 0;
+            }
+            
+            // Increase difficulty over time
+            if (frameCount % 1000 === 0) {
+                gameSpeed += 0.5;
+            }
+            
+            // Spawn clouds
+            if (Math.random() < 0.03) {
+                spawnCloud();
+            }
+            
+            // Spawn storm clouds less frequently
+            if (Math.random() < 0.01) {
+                spawnStormCloud();
+            }
+            
+            // Spawn sunbeams
+            if (Math.random() < 0.05) {
+                spawnSunbeam();
+            }
+            
+            // Update clouds
+            updateClouds();
+            
+            // Update storm clouds
+            updateStormClouds();
+            
+            // Update sunbeams
+            updateSunbeams();
+            
+            // Update particles
+            updateParticles();
+            
+            // Collision detection
+            checkCollisions();
+            
+            // Update score
+            score += Math.floor(gameSpeed / 3);
+            document.getElementById('score').textContent = score;
+        }
+        
+        // Spawn a regular cloud
+        function spawnCloud() {
+            clouds.push({
+                x: canvas.width,
+                y: Math.random() * canvas.height * 0.7,
+                width: 80 + Math.random() * 70,
+                height: 40 + Math.random() * 40,
+                speed: 1 + Math.random() * gameSpeed * 0.5,
+                color: CLOUD_COLORS[Math.floor(Math.random() * CLOUD_COLORS.length)]
+            });
+        }
+        
+        // Spawn a storm cloud
+        function spawnStormCloud() {
+            stormClouds.push({
+                x: canvas.width,
+                y: Math.random() * canvas.height * 0.7,
+                width: 100 + Math.random() * 100,
+                height: 60 + Math.random() * 60,
+                speed: 1 + Math.random() * gameSpeed * 0.3,
+                color: STORM_COLORS[Math.floor(Math.random() * STORM_COLORS.length)],
+                zapTimer: 0,
+                zapCooldown: 60 + Math.random() * 120
+            });
+        }
+        
+        // Spawn a sunbeam
+        function spawnSunbeam() {
+            sunbeams.push({
+                x: canvas.width,
+                y: Math.random() * canvas.height * 0.8,
+                width: 20,
+                height: 20,
+                speed: gameSpeed,
+                collected: false
+            });
+        }
+        
+        // Update cloud positions
+        function updateClouds() {
+            for (let i = clouds.length - 1; i >= 0; i--) {
+                clouds[i].x -= clouds[i].speed;
+                
+                // Remove off-screen clouds
+                if (clouds[i].x + clouds[i].width < 0) {
+                    clouds.splice(i, 1);
+                }
+            }
+        }
+        
+        // Update storm cloud positions and zapping
+        function updateStormClouds() {
+            for (let i = stormClouds.length - 1; i >= 0; i--) {
+                const cloud = stormClouds[i];
+                cloud.x -= cloud.speed;
+                
+                // Update zap timer
+                cloud.zapTimer++;
+                if (cloud.zapTimer > cloud.zapCooldown) {
+                    createLightning(cloud.x + cloud.width/2, cloud.y + cloud.height);
+                    cloud.zapTimer = 0;
+                    cloud.zapCooldown = 60 + Math.random() * 120;
+                }
+                
+                // Remove off-screen clouds
+                if (cloud.x + cloud.width < 0) {
+                    stormClouds.splice(i, 1);
+                }
+            }
+        }
+        
+        // Create lightning effect
+        function createLightning(x, y) {
+            // Lightning bolt particles
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x + Math.random() * 20 - 10,
+                    y: y + Math.random() * 20,
+                    size: 2 + Math.random() * 4,
+                    color: '#FFFF00',
+                    life: 10 + Math.random() * 10,
+                    speedX: Math.random() * 2 - 1,
+                    speedY: Math.random() * 2
+                });
+            }
+        }
+        
+        // Update sunbeam positions
+        function updateSunbeams() {
+            for (let i = sunbeams.length - 1; i >= 0; i--) {
+                sunbeams[i].x -= sunbeams[i].speed;
+                
+                // Remove off-screen or collected sunbeams
+                if (sunbeams[i].x + sunbeams[i].width < 0 || sunbeams[i].collected) {
+                    sunbeams.splice(i, 1);
+                }
+            }
+        }
+        
+        // Update particles
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].x += particles[i].speedX;
+                particles[i].y += particles[i].speedY;
+                particles[i].life--;
+                
+                // Remove dead particles
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        // Check for collisions
+        function checkCollisions() {
+            // Player bounds check
+            if (player.y >= canvas.height - player.height) {
+                gameOver();
+                return;
+            }
+            
+            // Sunbeam collection
+            for (let i = 0; i < sunbeams.length; i++) {
+                if (!sunbeams[i].collected && 
+                    player.x < sunbeams[i].x + sunbeams[i].width &&
+                    player.x + player.width > sunbeams[i].x &&
+                    player.y < sunbeams[i].y + sunbeams[i].height &&
+                    player.y + player.height > sunbeams[i].y) {
+                    
+                    sunbeams[i].collected = true;
+                    score += 10;
+                    
+                    // Create collection particles
+                    for (let j = 0; j < 15; j++) {
+                        particles.push({
+                            x: sunbeams[i].x + sunbeams[i].width/2,
+                            y: sunbeams[i].y + sunbeams[i].height/2,
+                            size: 2 + Math.random() * 3,
+                            color: '#FFD700',
+                            life: 20 + Math.random() * 20,
+                            speedX: Math.random() * 4 - 2,
+                            speedY: Math.random() * 4 - 2
+                        });
+                    }
+                }
+            }
+            
+            // Storm cloud collision
+            for (let i = 0; i < stormClouds.length; i++) {
+                const cloud = stormClouds[i];
+                if (player.x < cloud.x + cloud.width &&
+                    player.x + player.width > cloud.x &&
+                    player.y < cloud.y + cloud.height &&
+                    player.y + player.height > cloud.y) {
+                    
+                    gameOver();
+                    return;
+                }
+            }
+            
+            // Lightning collision (simple check with player area)
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                if (p.color === '#FFFF00' && // Only lightning particles
+                    player.x < p.x + p.size &&
+                    player.x + player.width > p.x &&
+                    player.y < p.y + p.size &&
+                    player.y + player.height > p.y) {
+                    
+                    gameOver();
+                    return;
+                }
+            }
+        }
+        
+        // Render game
+        function render() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw sky gradient
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGradient.addColorStop(0, '#87CEEB');
+            skyGradient.addColorStop(1, '#E0F7FA');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw clouds
+            drawClouds();
+            
+            // Draw storm clouds
+            drawStormClouds();
+            
+            // Draw sunbeams
+            drawSunbeams();
+            
+            // Draw particles
+            drawParticles();
+            
+            // Draw player
+            drawPlayer();
+            
+            // Draw UI
+            drawUI();
+        }
+        
+        // Draw regular clouds
+        function drawClouds() {
+            for (const cloud of clouds) {
+                ctx.save();
+                ctx.fillStyle = cloud.color;
+                
+                // Draw cloud with several overlapping circles
+                const segments = 5;
+                const segmentWidth = cloud.width / segments;
+                
+                for (let i = 0; i < segments; i++) {
+                    const x = cloud.x + i * segmentWidth;
+                    const y = cloud.y + Math.sin(i * 0.5) * 10;
+                    const radius = cloud.height;
+                    
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+            }
+        }
+        
+        // Draw storm clouds
+        function drawStormClouds() {
+            for (const cloud of stormClouds) {
+                ctx.save();
+                ctx.fillStyle = cloud.color;
+                
+                // Draw jagged storm cloud
+                ctx.beginPath();
+                ctx.moveTo(cloud.x, cloud.y + cloud.height/2);
+                
+                const segments = 8;
+                const segmentWidth = cloud.width / segments;
+                
+                for (let i = 0; i <= segments; i++) {
+                    const x = cloud.x + i * segmentWidth;
+                    const y = cloud.y + Math.random() * cloud.height/2;
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.lineTo(cloud.x + cloud.width, cloud.y + cloud.height);
+                
+                for (let i = segments; i >= 0; i--) {
+                    const x = cloud.x + i * segmentWidth;
+                    const y = cloud.y + cloud.height - Math.random() * cloud.height/3;
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.closePath();
+                ctx.fill();
+                
+                // Add some dark patches
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                for (let i = 0; i < 3; i++) {
+                    const patchX = cloud.x + Math.random() * cloud.width;
+                    const patchY = cloud.y + Math.random() * cloud.height;
+                    const patchSize = 20 + Math.random() * 30;
+                    
+                    ctx.beginPath();
+                    ctx.arc(patchX, patchY, patchSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+            }
+        }
+        
+        // Draw sunbeams
+        function drawSunbeams() {
+            for (const beam of sunbeams) {
+                if (beam.collected) continue;
+                
+                ctx.save();
+                
+                // Draw sunbeam (glowing circle)
+                const gradient = ctx.createRadialGradient(
+                    beam.x + beam.width/2, beam.y + beam.height/2, 0,
+                    beam.x + beam.width/2, beam.y + beam.height/2, beam.width
+                );
+                gradient.addColorStop(0, '#FFD700');
+                gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(beam.x + beam.width/2, beam.y + beam.height/2, beam.width, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add rays
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 2;
+                
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i / 8) * Math.PI * 2;
+                    const length = beam.width * 1.5;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(beam.x + beam.width/2, beam.y + beam.height/2);
+                    ctx.lineTo(
+                        beam.x + beam.width/2 + Math.cos(angle) * length,
+                        beam.y + beam.height/2 + Math.sin(angle) * length
+                    );
+                    ctx.stroke();
+                }
+                
+                ctx.restore();
+            }
+        }
+        
+        // Draw particles
+        function drawParticles() {
+            for (const p of particles) {
+                ctx.save();
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 30; // Fade out
+                
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        // Draw player (paper plane)
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x + player.width/2, player.y + player.height/2);
+            ctx.rotate(player.rotation);
+            
+            // Paper plane body
+            ctx.fillStyle = '#FFFFFF';
+            ctx.strokeStyle = '#BDBDBD';
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.moveTo(-player.width/2, 0);
+            ctx.lineTo(player.width/2, -player.height/2);
+            ctx.lineTo(player.width/2, player.height/2);
+            ctx.closePath();
+            
+            ctx.fill();
+            ctx.stroke();
+            
+            // Fold lines
+            ctx.strokeStyle = '#E0E0E0';
+            ctx.lineWidth = 1;
+            
+            ctx.beginPath();
+            ctx.moveTo(-player.width/4, 0);
+            ctx.lineTo(player.width/2, 0);
+            ctx.stroke();
+            
+            // Trail particles when moving fast
+            if (Math.abs(player.speedY) > 2) {
+                const trailColor = player.speedY > 0 ? '#FF9800' : '#2196F3';
+                
+                for (let i = 0; i < 2; i++) {
+                    particles.push({
+                        x: player.x - player.width/2 - Math.random() * 10,
+                        y: player.y + (Math.random() - 0.5) * player.height,
+                        size: 1 + Math.random() * 3,
+                        color: trailColor,
+                        life: 10 + Math.random() * 10,
+                        speedX: -2 - Math.random() * 3,
+                        speedY: (Math.random() - 0.5) * 2
+                    });
+                }
+            }
+            
+            ctx.restore();
+        }
+        
+        // Draw UI
+        function drawUI() {
+            if (!gameRunning) return;
+            
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText(`Score: ${score}`, canvas.width - 20, 40);
+            ctx.restore();
+        }
+        
+        // Start the game
+        window.onload = init;
+    </script>
+</body>
+</html>
